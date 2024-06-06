@@ -1,0 +1,77 @@
+api:
+ enabled: true
+ address: 0.0.0.0:8686
+
+sources:
+  internal-metrics:
+    type: internal_metrics
+    scrape_interval_secs: 10
+  http_in:
+    type: http_server
+    address: 0.0.0.0:8080
+    path: ""
+    method: POST
+    path_key: path
+    response_code: 200
+    strict_path: false
+    headers:
+      - host
+      - dest_bucket
+  health_in:
+    type: http_server
+    address: 0.0.0.0:8081
+    path: ""
+    method: GET
+    path_key: path
+    response_code: 200
+
+transforms:
+  http_split_buckets:
+    type: route
+    inputs:
+      - length_filter
+    route:
+      foo-route:
+        type: "vrl"
+        source: 'contains(string!(.host), "foo" )'
+      bar-route:
+        type: "vrl"
+        source: 'contains(string!(.host), "bar" )'
+
+  length_filter:
+    type: filter
+    condition: 'length( string!(.message)) < 20'
+    inputs:
+      - http_in
+
+  length_filter_metrics:
+    type: "filter"
+    inputs:
+      - internal-metrics
+    condition:
+      type: "vrl"
+      #source: '.tags.component_id == "length_filter" && contains( to_string!(get!( value: ., path:["name"])) , "discarded")'
+      source: |
+
+        if ( .tags.component_id == "length_filter" && contains( to_string!(get!( value: ., path:["name"])) , "count") ) {
+          log(to_string!(get!( value: ., path:[".tags"])))
+        }
+        #.tags.component_id == "length_filter" && !contains( to_string!(get!( value: ., path:["type"])) , "aggregated histogram")
+        not_histogram = !contains( to_string!(get!( value: ., path:["type"])) , "aggregated histogram")
+        desired_component = match_any(to_string!(get!(value: ., path:["tags", "component_id"])), [r'length_filter', r'http_in'])
+        not_histogram && desired_component
+      #source: '. = exists(.aggregated_histogram)'
+
+sinks:
+  out:
+    type: "console"
+    inputs:
+     - http_split_buckets.foo-route
+     - http_split_buckets.bar-route
+    encoding:
+      codec: "text"
+  prometheus_exporter_sink:
+    type: prometheus_exporter
+    inputs:
+     - length_filter_metrics
+    address: 0.0.0.0:8082
