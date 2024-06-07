@@ -58,7 +58,8 @@ transforms:
         }
         #.tags.component_id == "length_filter" && !contains( to_string!(get!( value: ., path:["type"])) , "aggregated histogram")
         not_histogram = !contains( to_string!(get!( value: ., path:["type"])) , "aggregated histogram")
-        desired_component = match_any(to_string!(get!(value: ., path:["tags", "component_id"])), [r'length_filter', r'http_in'])
+        #desired_component = match_any(to_string!(get!(value: ., path:["tags", "component_id"])), [r'length_filter', r'http_in'])
+        desired_component = includes(["length_filter", "http_in"], to_string!(get!(value: ., path:["tags", "component_id"])))
         not_histogram && desired_component
       #source: '. = exists(.aggregated_histogram)'
 
